@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.streamlit/secrets.toml
+uploads/
+output_channels/
+output_interpolation/
+app.log
+111.py

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像处理工具 - 颜色空间与插值</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh; color: #fff; padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 {
+            text-align: center; margin-bottom: 30px; font-size: 2.5rem;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px; padding: 25px; margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .panel h2 { margin-bottom: 20px; color: #00d4ff; font-size: 1.3rem; }
+        .upload-area {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 10px; padding: 40px; text-align: center;
+            cursor: pointer; transition: all 0.3s;
+        }
+        .upload-area:hover { border-color: #00d4ff; background: rgba(0, 212, 255, 0.1); }
+        .upload-area input { display: none; }
+        .preview-container { display: flex; gap: 20px; margin-top: 20px; flex-wrap: wrap; }
+        .preview-box {
+            flex: 1; min-width: 300px; background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px; padding: 10px;
+        }
+        .preview-box img { max-width: 100%; border-radius: 5px; }
+        .preview-box p { text-align: center; margin-top: 10px; color: #aaa; }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; margin-bottom: 8px; color: #ccc; }
+        select, input[type="number"] {
+            width: 100%; padding: 12px; border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3); color: #fff; font-size: 1rem;
+        }
+        select:focus, input:focus { outline: none; border-color: #00d4ff; }
+        .slider-group { margin-bottom: 20px; }
+        .slider-group label {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 8px; color: #ccc;
+        }
+        .slider-group label span { color: #00d4ff; font-weight: bold; }
+        input[type="range"] {
+            width: 100%; height: 8px; border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1); outline: none;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 20px; height: 20px;
+            border-radius: 50%; background: linear-gradient(135deg, #00d4ff, #7b2cbf);
+            cursor: pointer;
+        }
+        .btn {
+            padding: 12px 30px; border: none; border-radius: 8px;
+            cursor: pointer; font-size: 1rem; transition: all 0.3s; margin-right: 10px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff, #7b2cbf); color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1); color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.2); }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab {
+            padding: 10px 20px; border-radius: 8px; cursor: pointer;
+            background: rgba(255, 255, 255, 0.1); transition: all 0.3s;
+        }
+        .tab.active { background: linear-gradient(135deg, #00d4ff, #7b2cbf); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .results {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px; margin-top: 20px;
+        }
+        .result-item {
+            background: rgba(0, 0, 0, 0.3); border-radius: 10px;
+            padding: 10px; text-align: center;
+        }
+        .result-item img { max-width: 100%; border-radius: 5px; }
+        .result-item p { margin-top: 8px; font-size: 0.85rem; color: #aaa; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖼️ 图像处理工具 (OpenCV)</h1>
+        
+        <div class="panel">
+            <h2>📤 上传图像</h2>
+            <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                <p>点击或拖拽图像文件到此处</p>
+                <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
+            </div>
+            <div class="preview-container" id="previewContainer">
+                <div class="preview-box">
+                    <img id="originalPreview" src="" alt="原图">
+                    <p>原图</p>
+                </div>
+                <div class="preview-box" id="resultBox" style="display: none;">
+                    <img id="resultPreview" src="" alt="结果">
+                    <p>处理结果</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>⚙️ 选择功能</h2>
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('colorSpace', this)">颜色空间转换</div>
+                <div class="tab" onclick="switchTab('interpolation', this)">图像插值</div>
+                <div class="tab" onclick="switchTab('channelAdjust', this)">通道调节</div>
+            </div>
+            
+            <div id="colorSpace" class="tab-content active">
+                <div class="control-group">
+                    <label>选择颜色空间：</label>
+                    <select id="colorSpaceSelect">
+                        <option value="RGB">RGB</option>
+                        <option value="HSV">HSV</option>
+                        <option value="HLS">HLS</option>
+                        <option value="YUV">YUV</option>
+                        <option value="YCrCb">YCrCb</option>
+                    </select>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="processColorSpace()">转换并显示所有通道</button>
+                <div class="results" id="colorSpaceResults"></div>
+            </div>
+            
+            <div id="interpolation" class="tab-content">
+                <div class="control-group">
+                    <label>选择操作：</label>
+                    <select id="interpOperation" onchange="toggleOperationParams()">
+                        <option value="scale">放大/缩小</option>
+                        <option value="resize">缩放到指定尺寸</option>
+                        <option value="rotate">旋转</option>
+                    </select>
+                </div>
+                
+                <div class="control-group" id="scaleParams">
+                    <label>缩放倍数：</label>
+                    <input type="number" id="scaleFactor" value="2" min="0.1" max="10" step="0.1">
+                </div>
+                
+                <div class="control-group hidden" id="resizeParams">
+                    <div style="display: flex; gap: 15px;">
+                        <div style="flex:1">
+                            <label>宽度：</label>
+                            <input type="number" id="resizeWidth" value="400" min="1" max="5000">
+                        </div>
+                        <div style="flex:1">
+                            <label>高度：</label>
+                            <input type="number" id="resizeHeight" value="300" min="1" max="5000">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="control-group hidden" id="rotateParams">
+                    <label>旋转角度（度）：</label>
+                    <input type="number" id="rotateAngle" value="45" min="-360" max="360">
+                </div>
+                
+                <div class="control-group">
+                    <label>插值方法：</label>
+                    <select id="interpMethod">
+                        <option value="bilinear">双线性插值</option>
+                        <option value="nearest">最近邻插值</option>
+                    </select>
+                </div>
+                
+                <button type="button" class="btn btn-primary" onclick="processInterpolation()">执行插值</button>
+                <button type="button" class="btn btn-secondary" onclick="downloadResult()">下载结果</button>
+            </div>
+            
+            <div id="channelAdjust" class="tab-content">
+                <div class="control-group">
+                    <label>选择颜色空间：</label>
+                    <select id="adjustColorSpace" onchange="updateSliders()">
+                        <option value="HSV">HSV</option>
+                        <option value="RGB">RGB</option>
+                        <option value="YUV">YUV</option>
+                        <option value="YCrCb">YCrCb</option>
+                    </select>
+                </div>
+                
+                <div id="sliderContainer">
+                    <div class="slider-group">
+                        <label>H (色调) <span id="hVal">0</span></label>
+                        <input type="range" id="sliderH" min="-180" max="180" value="0" oninput="updateSliderVal('hVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>S (饱和度) <span id="sVal">100</span>%</label>
+                        <input type="range" id="sliderS" min="0" max="200" value="100" oninput="updateSliderVal('sVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>V (明度) <span id="vVal">100</span>%</label>
+                        <input type="range" id="sliderV" min="0" max="200" value="100" oninput="updateSliderVal('vVal', this.value)">
+                    </div>
+                </div>
+                
+                <button type="button" class="btn btn-primary" onclick="processChannelAdjust()">应用调节</button>
+                <button type="button" class="btn btn-secondary" onclick="resetSliders()">重置</button>
+                <button type="button" class="btn btn-secondary" onclick="downloadResult()">下载结果</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentImage = null;
+        let currentResult = null;
+
+        function switchTab(tabId, element) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            if (element) element.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        function toggleOperationParams() {
+            const op = document.getElementById('interpOperation').value;
+            document.getElementById('scaleParams').classList.add('hidden');
+            document.getElementById('resizeParams').classList.add('hidden');
+            document.getElementById('rotateParams').classList.add('hidden');
+            
+            if (op === 'scale') document.getElementById('scaleParams').classList.remove('hidden');
+            else if (op === 'resize') document.getElementById('resizeParams').classList.remove('hidden');
+            else if (op === 'rotate') document.getElementById('rotateParams').classList.remove('hidden');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    currentImage = e.target.result;
+                    document.getElementById('originalPreview').src = currentImage;
+                    document.getElementById('resultBox').style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function updateSliderVal(id, val) {
+            document.getElementById(id).textContent = val;
+        }
+
+        function updateSliders() {
+            const cs = document.getElementById('adjustColorSpace').value;
+            const container = document.getElementById('sliderContainer');
+            
+            let sliders = '';
+            if (cs === 'HSV') {
+                sliders = `
+                    <div class="slider-group">
+                        <label>H (色调) <span id="hVal">0</span></label>
+                        <input type="range" id="sliderH" min="-180" max="180" value="0" oninput="updateSliderVal('hVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>S (饱和度) <span id="sVal">100</span>%</label>
+                        <input type="range" id="sliderS" min="0" max="200" value="100" oninput="updateSliderVal('sVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>V (明度) <span id="vVal">100</span>%</label>
+                        <input type="range" id="sliderV" min="0" max="200" value="100" oninput="updateSliderVal('vVal', this.value)">
+                    </div>
+                `;
+            } else if (cs === 'RGB') {
+                sliders = `
+                    <div class="slider-group">
+                        <label>R (红色) <span id="rVal">100</span>%</label>
+                        <input type="range" id="sliderR" min="0" max="200" value="100" oninput="updateSliderVal('rVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>G (绿色) <span id="gVal">100</span>%</label>
+                        <input type="range" id="sliderG" min="0" max="200" value="100" oninput="updateSliderVal('gVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>B (蓝色) <span id="bVal">100</span>%</label>
+                        <input type="range" id="sliderB" min="0" max="200" value="100" oninput="updateSliderVal('bVal', this.value)">
+                    </div>
+                `;
+            } else if (cs === 'YUV') {
+                sliders = `
+                    <div class="slider-group">
+                        <label>Y (亮度) <span id="yVal">100</span>%</label>
+                        <input type="range" id="sliderY" min="0" max="200" value="100" oninput="updateSliderVal('yVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>U (色度) <span id="uVal">100</span>%</label>
+                        <input type="range" id="sliderU" min="0" max="200" value="100" oninput="updateSliderVal('uVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>V (色度) <span id="vVal">100</span>%</label>
+                        <input type="range" id="sliderV" min="0" max="200" value="100" oninput="updateSliderVal('vVal', this.value)">
+                    </div>
+                `;
+            } else if (cs === 'YCrCb') {
+                sliders = `
+                    <div class="slider-group">
+                        <label>Y (亮度) <span id="yVal">100</span>%</label>
+                        <input type="range" id="sliderY" min="0" max="200" value="100" oninput="updateSliderVal('yVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>Cr (红色分量) <span id="crVal">100</span>%</label>
+                        <input type="range" id="sliderCr" min="0" max="200" value="100" oninput="updateSliderVal('crVal', this.value)">
+                    </div>
+                    <div class="slider-group">
+                        <label>Cb (蓝色分量) <span id="cbVal">100</span>%</label>
+                        <input type="range" id="sliderCb" min="0" max="200" value="100" oninput="updateSliderVal('cbVal', this.value)">
+                    </div>
+                `;
+            }
+            container.innerHTML = sliders;
+        }
+
+        function resetSliders() {
+            document.querySelectorAll('input[type="range"]').forEach(s => {
+                if (s.id === 'sliderH') s.value = 0;
+                else s.value = 100;
+                updateSliderVal(s.id.replace('slider', '').toLowerCase() + 'Val', s.value);
+            });
+        }
+
+        async function processColorSpace() {
+            if (!currentImage) { alert('请先上传图像'); return; }
+            
+            const colorSpace = document.getElementById('colorSpaceSelect').value;
+            const formData = new FormData();
+            formData.append('image', dataURLtoFile(currentImage, 'image.jpg'));
+            formData.append('operation', 'colorSpace');
+            formData.append('colorSpace', colorSpace);
+            
+            try {
+                const response = await fetch('/api/process', { method: 'POST', body: formData });
+                const data = await response.json();
+                displayColorSpaceResults(data);
+            } catch (err) { console.error(err); alert('处理失败'); }
+        }
+
+        async function processInterpolation() {
+            if (!currentImage) { alert('请先上传图像'); return; }
+            
+            const operation = document.getElementById('interpOperation').value;
+            const method = document.getElementById('interpMethod').value;
+            let params = {};
+            
+            if (operation === 'scale') params.scale = parseFloat(document.getElementById('scaleFactor').value);
+            else if (operation === 'resize') {
+                params.width = parseInt(document.getElementById('resizeWidth').value);
+                params.height = parseInt(document.getElementById('resizeHeight').value);
+            } else if (operation === 'rotate') params.angle = parseFloat(document.getElementById('rotateAngle').value);
+            
+            const formData = new FormData();
+            formData.append('image', dataURLtoFile(currentImage, 'image.jpg'));
+            formData.append('operation', 'interpolation');
+            formData.append('method', method);
+            formData.append('op', operation);
+            formData.append('params', JSON.stringify(params));
+            
+            try {
+                const response = await fetch('/api/process', { method: 'POST', body: formData });
+                const data = await response.json();
+                currentResult = data.result;
+                document.getElementById('resultPreview').src = 'data:image/png;base64,' + data.result;
+                document.getElementById('resultBox').style.display = 'block';
+            } catch (err) { console.error(err); alert('处理失败'); }
+        }
+
+        async function processChannelAdjust() {
+            if (!currentImage) { alert('请先上传图像'); return; }
+            
+            const colorSpace = document.getElementById('adjustColorSpace').value;
+            let params = {};
+            
+            if (colorSpace === 'HSV') {
+                params = {
+                    h: parseInt(document.getElementById('sliderH').value),
+                    s: parseInt(document.getElementById('sliderS').value),
+                    v: parseInt(document.getElementById('sliderV').value)
+                };
+            } else if (colorSpace === 'RGB') {
+                params = {
+                    r: parseInt(document.getElementById('sliderR').value),
+                    g: parseInt(document.getElementById('sliderG').value),
+                    b: parseInt(document.getElementById('sliderB').value)
+                };
+            } else if (colorSpace === 'YUV') {
+                params = {
+                    y: parseInt(document.getElementById('sliderY').value),
+                    u: parseInt(document.getElementById('sliderU').value),
+                    v: parseInt(document.getElementById('sliderV').value)
+                };
+            } else if (colorSpace === 'YCrCb') {
+                params = {
+                    y: parseInt(document.getElementById('sliderY').value),
+                    cr: parseInt(document.getElementById('sliderCr').value),
+                    cb: parseInt(document.getElementById('sliderCb').value)
+                };
+            }
+            
+            const formData = new FormData();
+            formData.append('image', dataURLtoFile(currentImage, 'image.jpg'));
+            formData.append('operation', 'channelAdjust');
+            formData.append('colorSpace', colorSpace);
+            formData.append('params', JSON.stringify(params));
+            
+            try {
+                const response = await fetch('/api/process', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (data.result) {
+                    currentResult = data.result;
+                    document.getElementById('resultPreview').src = 'data:image/png;base64,' + data.result;
+                    document.getElementById('resultBox').style.display = 'block';
+                }
+            } catch (err) { console.error(err); alert('处理失败'); }
+        }
+
+        function displayColorSpaceResults(data) {
+            const container = document.getElementById('colorSpaceResults');
+            container.innerHTML = '';
+            data.results.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'result-item';
+                div.innerHTML = `<img src="data:image/png;base64,${item.image}" alt="${item.name}"><p>${item.name}</p>`;
+                container.appendChild(div);
+            });
+        }
+
+        function downloadResult() {
+            if (!currentResult) { alert('没有可下载的结果'); return; }
+            const link = document.createElement('a');
+            link.href = 'data:image/png;base64,' + currentResult;
+            link.download = 'result.png';
+            link.click();
+        }
+
+        function dataURLtoFile(dataurl, filename) {
+            const arr = dataurl.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            const n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) u8arr[n] = bstr.charCodeAt(n);
+            return new File([u8arr], filename, { type: mime });
+        }
+        
+        updateSliders();
+    </script>
+</body>
+</html>
