@@ -176,7 +176,7 @@ def interpolation_controls(image):
 
 
 def adjustment_controls(image):
-    with st.sidebar.form("adjustment_form"):
+    with st.sidebar:
         color_space = st.selectbox("调节空间", ["HSV", "RGB", "YUV", "YCrCb"])
 
         if color_space == "HSV":
@@ -185,26 +185,30 @@ def adjustment_controls(image):
                 "s": st.slider("S 饱和度", 0, 200, 100),
                 "v": st.slider("V 明度", 0, 200, 100),
             }
+            summary = f"H {values['h']}, S {values['s']}%, V {values['v']}%"
         elif color_space == "RGB":
             values = {
                 "r": st.slider("R 红色", 0, 200, 100),
                 "g": st.slider("G 绿色", 0, 200, 100),
                 "b": st.slider("B 蓝色", 0, 200, 100),
             }
+            summary = f"R {values['r']}%, G {values['g']}%, B {values['b']}%"
         elif color_space == "YUV":
             values = {
                 "y": st.slider("Y 亮度", 0, 200, 100),
                 "u": st.slider("U 色度", 0, 200, 100),
                 "v": st.slider("V 色度", 0, 200, 100),
             }
+            summary = f"Y {values['y']}%, U {values['u']}%, V {values['v']}%"
         else:
             values = {
                 "y": st.slider("Y 亮度", 0, 200, 100),
                 "cr": st.slider("Cr 红色分量", 0, 200, 100),
                 "cb": st.slider("Cb 蓝色分量", 0, 200, 100),
             }
+            summary = f"Y {values['y']}%, Cr {values['cr']}%, Cb {values['cb']}%"
 
-        st.form_submit_button("应用调节", use_container_width=True)
+        st.caption(f"实时预览：{color_space} · {summary}")
 
     return adjust_channels(image, color_space, values)
 
